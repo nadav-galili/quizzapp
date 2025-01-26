@@ -22,8 +22,8 @@ const QuizPage = () => {
       {
         time: 96, // 1:36 in seconds
         question: "האם חובה להעביר את כל המוצרים בקופה אחד אחד?",
-        options: ["א. כן", "ב. לא"],
-        answer: "ב. לא",
+        options: ["א.לא", "ב. כן"],
+        answer: "ב. כן",
       },
       {
         time: 183, // 3:03 in seconds
