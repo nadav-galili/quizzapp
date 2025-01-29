@@ -35,6 +35,10 @@ const QuizContent = () => {
   const [attempts, setAttempts] = useState<Record<number, number>>({});
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [restartCount, setRestartCount] = useState(0);
+  const [lastWrongAnswer, setLastWrongAnswer] = useState<string | null>(null);
+  const [isTestCompleted, setIsTestCompleted] = useState(false);
+  const [testAttemptId, setTestAttemptId] = useState<string | null>(null);
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
 
   // Get employee info from query params
   const searchParams = useSearchParams();
@@ -170,6 +174,12 @@ const QuizContent = () => {
     const currentQuestion = questions[currentQuestionIndex];
     const isCorrect = answer === currentQuestion.answer;
 
+    if (!isCorrect) {
+      setLastWrongAnswer(answer); // Set the wrong answer when incorrect
+    } else {
+      setLastWrongAnswer(null); // Reset when correct
+    }
+
     try {
       const { error } = await supabase.from("user_responses").insert({
         employee_id: employeeId,
@@ -227,20 +237,67 @@ const QuizContent = () => {
     }
   };
 
-  const handleEnded = () => {
+  const handleEnded = async () => {
     setIsVideoEnded(true);
     setPlaying(false);
+
+    if (testAttemptId) {
+      const totalQuestions = questions.length;
+      const correctAnswers = userAnswers.filter(
+        (answer, index) => answer === questions[index].answer
+      ).length;
+      const passed = correctAnswers / totalQuestions >= 0.6; // 60% passing grade
+
+      try {
+        await supabase
+          .from("test_attempts")
+          .update({
+            completed_at: new Date().toISOString(),
+            passed,
+            is_completed: true,
+          })
+          .eq("id", testAttemptId);
+
+        setIsTestCompleted(true);
+
+        // Redirect to dashboard after 3 seconds
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 3000);
+      } catch (error) {
+        console.error("Error updating test completion:", error);
+      }
+    }
   };
 
-  const handleStart = () => {
-    setHasStarted(true);
-    setPlaying(true);
+  const handleStart = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("test_attempts")
+        .insert({
+          employee_id: employeeId,
+          video_id: assignments[0]?.video_id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      setTestAttemptId(data.id);
+      setHasStarted(true);
+      setPlaying(true);
+    } catch (err) {
+      console.error("Error creating test attempt:", err);
+      setHasStarted(true);
+      setPlaying(true);
+    }
   };
 
   const getCurrentQuestionUI = () => {
     if (currentQuestionIndex === -1) return null;
 
     const question = questions[currentQuestionIndex];
+    const currentAttempt = attempts[currentQuestionIndex] || 0;
+
     return (
       <Card className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 bg-white shadow-lg z-10">
         <CardContent className="p-6">
@@ -252,13 +309,17 @@ const QuizContent = () => {
               <Button
                 key={index}
                 variant="outline"
-                className="w-full text-right"
+                className={`w-full text-right ${
+                  currentAttempt === 1 && option === lastWrongAnswer
+                    ? "border-2 border-red-500 text-red-500 bg-red-50"
+                    : ""
+                }`}
                 onClick={() => handleAnswer(option)}>
                 {option}
               </Button>
             ))}
           </div>
-          {attempts[currentQuestionIndex] === 1 && (
+          {currentAttempt === 1 && (
             <p className="text-red-500 mt-2 text-right">
               תשובה שגויה! יש לך עוד ניסיון אחד.
             </p>
@@ -333,10 +394,24 @@ const QuizContent = () => {
             url={videoUrl}
             playing={playing}
             controls={true}
-            width="100%" // Back to 100% since parent is now constrained
-            height="100%" // Back to 100% since parent is now constrained
+            width="100%"
+            height="100%"
             onProgress={handleProgress}
             onEnded={handleEnded}
+            onPlay={async () => {
+              if (!hasStartedPlaying) {
+                setHasStartedPlaying(true);
+                try {
+                  await supabase.from("video_views").insert({
+                    employee_id: employeeId,
+                    video_id: assignments[0]?.video_id,
+                    started_at: new Date().toISOString(),
+                  });
+                } catch (err) {
+                  console.error("Error logging video start:", err);
+                }
+              }
+            }}
             progressInterval={100}
             config={{
               file: {
@@ -368,13 +443,16 @@ const QuizContent = () => {
       </div>
       {getCurrentQuestionUI()}
 
-      <div className="flex justify-center items-center mt-4">
-        <button
-          className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600"
-          onClick={() => router.push("/dashboard")}>
-          לדף הבקרה
-        </button>
-      </div>
+      {isVideoEnded && isTestCompleted && (
+        <Card className="mt-4 bg-green-50">
+          <CardContent className="p-6 text-center">
+            <h2 className="text-xl font-bold text-green-600 mb-2">
+              המבחן הושלם בהצלחה!
+            </h2>
+            <p className="text-gray-600">מעביר לדף הבקרה...</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

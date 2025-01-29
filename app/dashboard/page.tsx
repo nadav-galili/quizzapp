@@ -12,7 +12,8 @@ interface EmployeeStats {
   correct_answers: number;
   wrong_answers: number;
   restart_count: number;
-  completed_at: string;
+  started_at: string;
+  completed_at: string | null;
   has_completed: boolean;
 }
 
@@ -23,55 +24,69 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Get all responses with employee details and video info
-        const { data: responses, error } = await supabase
-          .from("user_responses")
+        // First get test attempts
+        const { data: attempts, error: attemptsError } = await supabase
+          .from("test_attempts")
           .select(
             `
             *,
-            employees (full_name),
-            video_questions (video_id)
+            employees (full_name)
           `
           )
-          .order("answered_at", { ascending: false });
+          .order("started_at", { ascending: false });
 
-        console.log("Query result:", { responses, error });
+        // Then get responses
+        const { data: responses, error: responsesError } = await supabase
+          .from("user_responses")
+          .select("*")
+          .in("employee_id", attempts?.map((a) => a.employee_id) || []);
 
-        if (error) {
-          console.error("Supabase error:", error);
-          throw error;
+        console.log("Query result:", {
+          attempts,
+          responses,
+          attemptsError,
+          responsesError,
+        });
+
+        if (attemptsError || responsesError) {
+          console.error("Supabase error:", attemptsError || responsesError);
+          throw attemptsError || responsesError;
         }
 
-        if (!responses) {
-          console.log("No responses found");
+        if (!attempts || !responses) {
+          console.log("No data found");
           setStats([]);
           return;
         }
 
         // Process the data
-        const stats = responses.reduce(
+        const stats = attempts?.reduce(
           (acc: Record<string, EmployeeStats>, curr) => {
-            const key = `${curr.employee_id}-${curr.video_questions.video_id}`;
+            const key = `${curr.employee_id}-${curr.video_id}`;
 
             if (!acc[key]) {
+              // Get all responses for this employee and video
+              const employeeResponses =
+                responses?.filter(
+                  (r) =>
+                    r.employee_id === curr.employee_id &&
+                    r.video_id === curr.video_id
+                ) || [];
+
               acc[key] = {
                 employee_id: curr.employee_id,
                 full_name: curr.employees?.full_name || "Unknown",
-                video_id: curr.video_questions?.video_id || "Unknown",
-                total_questions: 0,
-                correct_answers: 0,
-                wrong_answers: 0,
+                video_id: curr.video_id,
+                total_questions: employeeResponses.length,
+                correct_answers: employeeResponses.filter((r) => r.is_correct)
+                  .length,
+                wrong_answers: employeeResponses.filter((r) => !r.is_correct)
+                  .length,
                 restart_count: 0,
-                completed_at: curr.answered_at,
-                has_completed: false,
+                started_at: curr.started_at,
+                completed_at: curr.completed_at,
+                has_completed: curr.is_completed || false,
               };
-            }
-
-            acc[key].total_questions++;
-            if (curr.is_correct) {
-              acc[key].correct_answers++;
-            } else {
-              acc[key].wrong_answers++;
             }
 
             return acc;
@@ -107,21 +122,26 @@ export default function Dashboard() {
                   {stat.full_name}
                 </h2>
                 <div className="space-y-2 text-right">
-                  <p>שאלות נכונות: {stat.correct_answers}</p>
-                  <p>שאלות שגויות: {stat.wrong_answers}</p>
+                  <p className="text-green-600">
+                    שאלות נכונות: {stat.correct_answers}
+                  </p>
+                  <p className="text-red-600">
+                    שאלות שגויות: {stat.wrong_answers}
+                  </p>
                   <p>סה״כ שאלות: {stat.total_questions}</p>
                   <p>התחלות מחדש: {stat.restart_count}</p>
                   <p>
-                    ציון:{" "}
-                    {(
-                      (stat.correct_answers / stat.total_questions) *
-                      100
-                    ).toFixed(0)}
-                    %
+                    התחיל בתאריך:{" "}
+                    {new Date(stat.started_at).toLocaleString("he-IL")}
                   </p>
-                  <p>
-                    תאריך סיום:{" "}
-                    {new Date(stat.completed_at).toLocaleDateString("he-IL")}
+                  <p
+                    className={
+                      stat.has_completed ? "text-green-600" : "text-yellow-600"
+                    }>
+                    סיים בתאריך:{" "}
+                    {stat.completed_at
+                      ? new Date(stat.completed_at).toLocaleString("he-IL")
+                      : "לא הושלם"}
                   </p>
                 </div>
               </CardContent>
