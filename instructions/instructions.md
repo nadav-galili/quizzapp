@@ -89,7 +89,7 @@ We aim for a minimal structure while using Next.js 15 (App Router) and shadcn/ui
 
 ```
 quizz
-├── README.md
+[├── README.md
 ├── next.config.ts
 ├── package.json
 ├── tsconfig.json
@@ -112,7 +112,7 @@ quizz
 ├── public
 │   └── video.mp4                # The quiz video (if locally hosted)
 └── instructions
-    └── instructions.md          # Documentation, code snippets, references
+    └── instructions.md          # Documentation, code snippets, references](instructions.md)
 ```
 
 ### Why This Structure

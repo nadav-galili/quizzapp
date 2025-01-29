@@ -1,8 +1,10 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import ReactPlayer from "react-player";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/app/lib/supabase/client";
 
 interface Question {
   time: number;
@@ -16,29 +18,118 @@ const QuizPage = () => {
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
   const [playing, setPlaying] = useState(true);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [questionsData, setQuestionsData] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [videoError, setVideoError] = useState("");
 
-  const questions: Question[] = useMemo(
-    () => [
-      {
-        time: 96, // 1:36 in seconds
-        question: "האם חובה להעביר את כל המוצרים בקופה אחד אחד?",
-        options: ["א.לא", "ב. כן"],
-        answer: "ב. כן",
-      },
-      {
-        time: 183, // 3:03 in seconds
-        question: "על מה צריך להקפיד ביציאה להפסקה?",
-        options: [
-          "א. נעילת הקופה",
-          "ב. סגירת המעבר",
-          "ג. הצבת שלט -קופה סגורה",
-          "ד. כל התשובות נכונות",
-        ],
-        answer: "ד. כל התשובות נכונות",
-      },
-    ],
-    []
-  );
+  // Get employee info from query params
+  const searchParams = useSearchParams();
+  const fullName = searchParams.get("full_name");
+  const employeeId = searchParams.get("employee_id");
+
+  //display the employee name in the top right corner
+  const [employeeName, setEmployeeName] = useState(fullName);
+  useEffect(() => {
+    setEmployeeName(fullName);
+  }, [fullName]);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      console.log("🚀 ~ Current auth session:", session);
+    };
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    const fetchVideoData = async () => {
+      try {
+        if (!employeeId) {
+          throw new Error("Missing employee ID");
+        }
+        console.log("🚀 ~ fetchVideoData ~ employeeId:", employeeId);
+
+        // 1. Get assigned videos
+        const { data: assignments, error: assignmentError } = await supabase
+          .from("employee_video_assignments")
+          .select("video_id")
+          .eq("employee_id", employeeId);
+
+        console.log("🚀 ~ assignments query result:", {
+          assignments,
+          assignmentError,
+        });
+
+        if (assignmentError || !assignments) {
+          throw assignmentError || new Error("No video assignments found");
+        }
+
+        // 2. Validate assigned video
+        const videoId = assignments[0]?.video_id;
+        if (!videoId) {
+          setVideoError("No assigned videos found");
+          return;
+        }
+        console.log("🚀 ~ Fetching video with ID:", videoId);
+
+        // 3. Fetch video details with better error handling
+        const { data: video, error: videoError } = await supabase
+          .from("videos")
+          .select("*") // Select all columns for debugging
+          .eq("id", videoId);
+
+        console.log("🚀 ~ Video query result:", { video, videoError });
+
+        if (videoError) throw videoError;
+        if (!video?.length) {
+          throw new Error(`Video not found for ID: ${videoId}`);
+        }
+
+        setVideoUrl(video[0].video_url);
+
+        // 4. Load and validate questions
+        const { data: questions, error: questionError } = await supabase
+          .from("video_questions")
+          .select("*")
+          .eq("video_id", videoId)
+          .order("question_order", { ascending: true });
+
+        if (questionError || !questions?.length) {
+          throw questionError || new Error("No questions found for this video");
+        }
+
+        // Validate question format
+        const formattedQuestions = questions.map((q) => {
+          if (!q.options || !Array.isArray(q.options)) {
+            throw new Error("Invalid question options format");
+          }
+          return {
+            time: q.timestamp,
+            question: q.question,
+            options: q.options,
+            answer: q.options[q.correct_answer],
+          };
+        });
+
+        setQuestionsData(formattedQuestions);
+      } catch (err) {
+        console.error("Video load error:", err);
+        setVideoError(
+          err instanceof Error ? err.message : "שגיאה בטעינת סרטון ההדרכה"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (employeeId) fetchVideoData();
+  }, [employeeId]);
+
+  // Update existing questions reference
+  const questions: Question[] = useMemo(() => questionsData, [questionsData]);
 
   const handleProgress = (progress: { playedSeconds: number }) => {
     const currentTime = progress.playedSeconds;
@@ -133,11 +224,20 @@ const QuizPage = () => {
     );
   };
 
+  if (loading) return <div className="text-center p-8">טוען סרטון...</div>;
+  if (videoError)
+    return <div className="text-red-500 text-center p-8">{videoError}</div>;
+
   return (
     <div className="container mx-auto p-4">
+      <div className="flex justify-end items-center">
+        <p className="text-lg text-right mr-4 text-blue-500 font-bold">
+          ברוכים הבאים למערכת {employeeName}
+        </p>
+      </div>
       <div className="relative aspect-video rounded-lg overflow-hidden">
         <ReactPlayer
-          url="/video.mp4"
+          url={videoUrl}
           playing={playing}
           controls={true}
           width="100%"
