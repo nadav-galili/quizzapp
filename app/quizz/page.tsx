@@ -8,10 +8,15 @@ import { supabase } from "@/app/lib/supabase/client";
 import { Suspense } from "react";
 
 interface Question {
+  id: string;
   time: number;
   question: string;
   options: string[];
   answer: string;
+}
+
+interface Assignment {
+  video_id: string;
 }
 
 // Separate the main quiz content into a component
@@ -26,6 +31,8 @@ const QuizContent = () => {
   const [videoError, setVideoError] = useState("");
   const [hasStarted, setHasStarted] = useState(false);
   const [attempts, setAttempts] = useState<Record<number, number>>({});
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [restartCount, setRestartCount] = useState(0);
 
   // Get employee info from query params
   const searchParams = useSearchParams();
@@ -70,6 +77,9 @@ const QuizContent = () => {
           throw assignmentError || new Error("No video assignments found");
         }
 
+        // Store assignments in state
+        setAssignments(assignments || []);
+
         // 2. Validate assigned video
         const videoId = assignments[0]?.video_id;
         if (!videoId) {
@@ -110,6 +120,7 @@ const QuizContent = () => {
             throw new Error("Invalid question options format");
           }
           return {
+            id: q.id,
             time: q.timestamp,
             question: q.question,
             options: q.options,
@@ -153,35 +164,65 @@ const QuizContent = () => {
     }
   };
 
-  const handleAnswer = (answer: string) => {
+  const handleAnswer = async (answer: string) => {
     const currentQuestion = questions[currentQuestionIndex];
     const isCorrect = answer === currentQuestion.answer;
 
-    if (!isCorrect) {
-      const questionAttempts = attempts[currentQuestionIndex] || 0;
+    try {
+      const { error } = await supabase.from("user_responses").insert({
+        employee_id: employeeId,
+        video_id: assignments[0]?.video_id,
+        question_id: questions[currentQuestionIndex].id,
+        selected_answer: answer,
+        is_correct: isCorrect,
+        attempt_number: attempts[currentQuestionIndex] || 0,
+      });
 
-      if (questionAttempts === 0) {
-        setAttempts((prev) => ({
-          ...prev,
-          [currentQuestionIndex]: 1,
-        }));
-        return;
-      } else {
-        alert("Starting over!");
-        // Reset video position to start
-        playerRef.current?.seekTo(0);
-        setCurrentQuestionIndex(-1);
-        setUserAnswers([]);
-        setAttempts({});
-        setPlaying(false);
-        setHasStarted(false);
-        return;
+      if (error) {
+        console.error("Supabase error:", error.message, error.details);
+        throw error;
       }
-    }
 
-    setUserAnswers((prev) => [...prev, answer]);
-    setCurrentQuestionIndex(-1);
-    setPlaying(true);
+      if (!isCorrect) {
+        const questionAttempts = attempts[currentQuestionIndex] || 0;
+
+        if (questionAttempts === 0) {
+          setAttempts((prev) => ({
+            ...prev,
+            [currentQuestionIndex]: 1,
+          }));
+          return;
+        } else {
+          alert("Starting over!");
+          // Increment restart count and log it
+          setRestartCount((prev) => prev + 1);
+          await supabase.from("video_restarts").insert({
+            employee_id: employeeId,
+            video_id: assignments[0]?.video_id,
+            restart_count: restartCount + 1,
+            restarted_at: new Date().toISOString(),
+          });
+
+          playerRef.current?.seekTo(0);
+          setCurrentQuestionIndex(-1);
+          setUserAnswers([]);
+          setAttempts({});
+          setPlaying(false);
+          setHasStarted(false);
+          return;
+        }
+      }
+
+      setUserAnswers((prev) => [...prev, answer]);
+      setCurrentQuestionIndex(-1);
+      setPlaying(true);
+    } catch (err) {
+      console.error(
+        "Error storing response:",
+        err instanceof Error ? err.message : err
+      );
+      // Continue with quiz even if storage fails
+    }
   };
 
   const handleEnded = () => {
@@ -272,7 +313,7 @@ const QuizContent = () => {
   return (
     <div className="container mx-auto p-4">
       {/* Add wrapper div with width constraint */}
-      <div className="w-1/2 mx-auto">
+      <div className="w-full mx-auto">
         {" "}
         {/* This makes the frame 50% width and centered */}
         <div className="relative aspect-video rounded-lg overflow-hidden">
@@ -280,7 +321,7 @@ const QuizContent = () => {
             ref={playerRef}
             url={videoUrl}
             playing={playing}
-            controls={false}
+            controls={true}
             width="100%" // Back to 100% since parent is now constrained
             height="100%" // Back to 100% since parent is now constrained
             onProgress={handleProgress}
