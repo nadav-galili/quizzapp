@@ -393,7 +393,7 @@ const QuizContent = () => {
             ref={playerRef}
             url={videoUrl}
             playing={playing}
-            controls={true}
+            controls={false}
             width="100%"
             height="100%"
             onProgress={handleProgress}
