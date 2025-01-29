@@ -16,12 +16,14 @@ interface Question {
 const QuizPage = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(false);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
   const [questionsData, setQuestionsData] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [videoError, setVideoError] = useState("");
+  const [hasStarted, setHasStarted] = useState(false);
+  const [attempts, setAttempts] = useState<Record<number, number>>({});
 
   // Get employee info from query params
   const searchParams = useSearchParams();
@@ -50,7 +52,6 @@ const QuizPage = () => {
         if (!employeeId) {
           throw new Error("Missing employee ID");
         }
-        console.log("🚀 ~ fetchVideoData ~ employeeId:", employeeId);
 
         // 1. Get assigned videos
         const { data: assignments, error: assignmentError } = await supabase
@@ -148,6 +149,35 @@ const QuizPage = () => {
   };
 
   const handleAnswer = (answer: string) => {
+    const currentQuestion = questions[currentQuestionIndex];
+    const isCorrect = answer === currentQuestion.answer;
+
+    if (!isCorrect) {
+      // Get current attempts for this question
+      const questionAttempts = attempts[currentQuestionIndex] || 0;
+
+      if (questionAttempts === 0) {
+        // First wrong attempt
+        setAttempts((prev) => ({
+          ...prev,
+          [currentQuestionIndex]: 1,
+        }));
+        alert("Wrong answer! Try again.");
+        return; // Don't proceed, let them try again
+      } else {
+        // Second wrong attempt - immediately restart
+        alert("Starting over!");
+        // Reset everything and return early
+        setCurrentQuestionIndex(-1);
+        setUserAnswers([]);
+        setAttempts({});
+        setPlaying(false);
+        setHasStarted(false);
+        return;
+      }
+    }
+
+    // Correct answer - clear attempts for this question
     setUserAnswers((prev) => [...prev, answer]);
     setCurrentQuestionIndex(-1);
     setPlaying(true);
@@ -156,6 +186,11 @@ const QuizPage = () => {
   const handleEnded = () => {
     setIsVideoEnded(true);
     setPlaying(false);
+  };
+
+  const handleStart = () => {
+    setHasStarted(true);
+    setPlaying(true);
   };
 
   const getCurrentQuestionUI = () => {
@@ -179,6 +214,11 @@ const QuizPage = () => {
               </Button>
             ))}
           </div>
+          {attempts[currentQuestionIndex] === 1 && (
+            <p className="text-red-500 mt-2 text-right">
+              Wrong answer! One more try.
+            </p>
+          )}
         </CardContent>
       </Card>
     );
@@ -230,33 +270,47 @@ const QuizPage = () => {
 
   return (
     <div className="container mx-auto p-4">
-      <div className="flex justify-end items-center">
-        <p className="text-lg text-right mr-4 text-blue-500 font-bold">
-          ברוכים הבאים למערכת {employeeName}
-        </p>
-      </div>
-      <div className="relative aspect-video rounded-lg overflow-hidden">
-        <ReactPlayer
-          url={videoUrl}
-          playing={playing}
-          controls={true}
-          width="100%"
-          height="100%"
-          onProgress={handleProgress}
-          onEnded={handleEnded}
-          progressInterval={100}
-          config={{
-            file: {
-              attributes: {
-                controlsList: "nodownload",
-                disablePictureInPicture: true,
+      {/* Add wrapper div with width constraint */}
+      <div className="w-1/2 mx-auto">
+        {" "}
+        {/* This makes the frame 50% width and centered */}
+        <div className="relative aspect-video rounded-lg overflow-hidden">
+          <ReactPlayer
+            url={videoUrl}
+            playing={playing}
+            controls={false}
+            width="100%" // Back to 100% since parent is now constrained
+            height="100%" // Back to 100% since parent is now constrained
+            onProgress={handleProgress}
+            onEnded={handleEnded}
+            progressInterval={100}
+            config={{
+              file: {
+                attributes: {
+                  controlsList: "nodownload",
+                  disablePictureInPicture: true,
+                },
+                forceAudio: false,
+                forceHLS: false,
+                forceVideo: false,
               },
-              forceAudio: false,
-              forceHLS: false,
-              forceVideo: false,
-            },
-          }}
-        />
+            }}
+          />
+          {!hasStarted && (
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 cursor-pointer"
+              onClick={handleStart}>
+              <button className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600">
+                התחל צפייה
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-center items-center mt-4">
+          <p className="text-2xl text-center mr-4 text-blue-500 font-bold">
+            ברוכים הבאים למערכת {employeeName}
+          </p>
+        </div>
       </div>
       {getCurrentQuestionUI()}
       {getResults()}
