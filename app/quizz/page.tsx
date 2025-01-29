@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabase/client";
+import { Suspense } from "react";
 
 interface Question {
   time: number;
@@ -13,7 +14,8 @@ interface Question {
   answer: string;
 }
 
-const QuizPage = () => {
+// Separate the main quiz content into a component
+const QuizContent = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -318,4 +320,11 @@ const QuizPage = () => {
   );
 };
 
-export default QuizPage;
+// Main page component with Suspense
+export default function QuizPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <QuizContent />
+    </Suspense>
+  );
+}
