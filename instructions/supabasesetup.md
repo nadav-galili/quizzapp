@@ -259,52 +259,100 @@ MAX_VIDEO_SIZE_MB="500"
 
 ```sql
 -- Core Tables
-create table employees (
-  id uuid primary key default uuid_generate_v4(),
-  employee_number text not null unique,
-  full_name text not null,
-  department text,
-  created_at timestamp with time zone default now()
-);
+create table public.employees (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  employee_number text not null,
+  created_at timestamp with time zone null default timezone ('utc'::text, now()),
+  full_name text null,
+  department text null,
+  is_active boolean null default true,
+  constraint employees_pkey primary key (id),
+  constraint employees_employee_number_key unique (employee_number)
+) TABLESPACE pg_default;
 
-create table videos (
-  id uuid primary key default uuid_generate_v4(),
+create index IF not exists idx_employee_number on public.employees using btree (employee_number) TABLESPACE pg_default;
+create table public.videos (
+  id uuid not null default extensions.uuid_generate_v4 (),
   title text not null,
   video_url text not null,
   duration numeric not null,
-  created_at timestamp with time zone default now()
-);
+  created_at timestamp with time zone null default now(),
+  constraint videos_pkey primary key (id)
+) TABLESPACE pg_default;
 
-create table employee_video_assignments (
-  id uuid primary key default uuid_generate_v4(),
-  employee_id uuid references employees(id) on delete cascade,
-  video_id uuid references videos(id) on delete cascade,
-  assigned_at timestamp with time zone default now(),
-  unique (employee_id, video_id)
-);
+create table public.employee_video_assignments (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  employee_id uuid null,
+  video_id uuid null,
+  assigned_at timestamp with time zone null default now(),
+  constraint employee_video_assignments_pkey primary key (id),
+  constraint employee_video_assignments_employee_id_video_id_key unique (employee_id, video_id),
+  constraint employee_video_assignments_employee_id_fkey foreign KEY (employee_id) references employees (id) on delete CASCADE,
+  constraint employee_video_assignments_video_id_fkey foreign KEY (video_id) references videos (id) on delete CASCADE
+) TABLESPACE pg_default;
 
-create table video_questions (
-  id uuid primary key default uuid_generate_v4(),
-  video_id uuid references videos(id) on delete cascade not null,
-  timestamp numeric not null check (timestamp >= 0),
+create index IF not exists idx_assignments_employee on public.employee_video_assignments using btree (employee_id) TABLESPACE pg_default;
+
+create index IF not exists idx_assignments_video on public.employee_video_assignments using btree (video_id) TABLESPACE pg_default;
+
+
+create table public.video_restarts (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  employee_id uuid null,
+  video_id uuid null,
+  restart_count integer not null,
+  restarted_at timestamp with time zone null default now(),
+  constraint video_restarts_pkey primary key (id),
+  constraint video_restarts_employee_id_fkey foreign KEY (employee_id) references employees (id) on delete CASCADE,
+  constraint video_restarts_video_id_fkey foreign KEY (video_id) references videos (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+
+
+create table public.video_questions (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  video_id uuid not null,
+  timestamp numeric not null,
   question text not null,
   options jsonb not null,
   correct_answer numeric not null,
   question_order numeric not null,
+  constraint video_questions_pkey primary key (id),
+  constraint video_questions_video_id_fkey foreign KEY (video_id) references videos (id) on delete CASCADE,
   constraint valid_correct_answer check (
-    correct_answer between 0 and jsonb_array_length(options) - 1
-  )
-);
+    (
+      (correct_answer >= (0)::numeric)
+      and (
+        correct_answer <= ((jsonb_array_length(options) - 1))::numeric
+      )
+    )
+  ),
+  constraint video_questions_timestamp_check check (("timestamp" >= (0)::numeric))
+) TABLESPACE pg_default;
 
-create table user_responses (
-  id uuid primary key default uuid_generate_v4(),
-  employee_id uuid references employees(id) on delete cascade not null,
-  video_id uuid references videos(id) on delete cascade not null,
-  question_id uuid references video_questions(id) on delete cascade not null,
-  selected_answer numeric not null,
+create index IF not exists idx_questions_video on public.video_questions using btree (video_id) TABLESPACE pg_default;
+
+create index IF not exists idx_questions_timestamp on public.video_questions using btree ("timestamp") TABLESPACE pg_default;
+create table public.user_responses (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  employee_id uuid not null,
+  video_id uuid not null,
+  question_id uuid not null,
+  selected_answer text not null,
   is_correct boolean not null default false,
-  answered_at timestamp with time zone default now()
-);
+  answered_at timestamp with time zone null default now(),
+  attempt_number integer null default 0,
+  constraint user_responses_pkey primary key (id),
+  constraint user_responses_employee_id_fkey foreign KEY (employee_id) references employees (id) on delete CASCADE,
+  constraint user_responses_question_id_fkey foreign KEY (question_id) references video_questions (id) on delete CASCADE,
+  constraint user_responses_video_id_fkey foreign KEY (video_id) references videos (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_responses_employee_video on public.user_responses using btree (employee_id, video_id) TABLESPACE pg_default;
+
+create trigger check_response_correctness
+after INSERT on user_responses for EACH row
+execute FUNCTION set_response_correctness ();
 
 -- Automatic Correctness Trigger
 create or replace function set_response_correctness()

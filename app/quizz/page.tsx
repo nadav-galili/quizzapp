@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabase/client";
 import { Suspense } from "react";
+import { useRouter } from "next/navigation";
 
 interface Question {
   id: string;
@@ -21,6 +22,7 @@ interface Assignment {
 
 // Separate the main quiz content into a component
 const QuizContent = () => {
+  const router = useRouter();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -258,7 +260,7 @@ const QuizContent = () => {
           </div>
           {attempts[currentQuestionIndex] === 1 && (
             <p className="text-red-500 mt-2 text-right">
-              Wrong answer! One more try.
+              תשובה שגויה! יש לך עוד ניסיון אחד.
             </p>
           )}
         </CardContent>
@@ -266,45 +268,54 @@ const QuizContent = () => {
     );
   };
 
-  const getResults = () => {
-    if (!isVideoEnded) return null;
+  useEffect(() => {
+    const getResults = async () => {
+      if (!isVideoEnded) return;
 
-    return (
-      <Card className="mt-4">
-        <CardContent className="p-4">
-          <h3 className="text-lg font-bold mb-2">תוצאותך:</h3>
-          <div className="space-y-2">
-            {userAnswers.map((answer, index) => {
-              const isCorrect = answer === questions[index].answer;
-              return (
-                <div
-                  key={index}
-                  className={`p-2 rounded ${
-                    isCorrect
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
-                  }`}>
-                  <p className="text-right">{questions[index].question}</p>
-                  <p className="text-right">
-                    תשובתך: {answer} {isCorrect ? "✓" : "✗"}
-                  </p>
-                </div>
-              );
-            })}
-            <p className="font-bold mt-4">
-              תוצאתך:{" "}
-              {
-                userAnswers.filter(
-                  (answer, index) => answer === questions[index].answer
-                ).length
-              }
-              /{questions.length}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
+      console.log("🚀 ~ Query params:", {
+        employeeId,
+        videoId: assignments[0]?.video_id,
+      });
+
+      // Get responses with better error handling
+      const { data: responses, error: responsesError } = await supabase
+        .from("user_responses")
+        .select("*")
+        .eq("employee_id", employeeId)
+        .eq("video_id", assignments[0]?.video_id);
+
+      console.log("🚀 ~ Full query result:", {
+        responses,
+        responsesError,
+        params: {
+          employeeId,
+          videoId: assignments[0]?.video_id,
+        },
+      });
+
+      if (responsesError) {
+        console.error("Error fetching responses:", responsesError);
+        return;
+      }
+
+      const correctAnswers =
+        responses?.filter((r) => r.is_correct === true).length || 0;
+      const wrongAnswers =
+        responses?.filter((r) => r.is_correct === false).length || 0;
+      const totalRestarts = restartCount;
+
+      console.log("🚀 ~ Calculated results:", {
+        correctAnswers,
+        wrongAnswers,
+        totalRestarts,
+        responses: responses?.length,
+      });
+    };
+
+    if (isVideoEnded) {
+      getResults();
+    }
+  }, [isVideoEnded, employeeId, assignments, restartCount]);
 
   if (loading) return <div className="text-center p-8">טוען סרטון...</div>;
   if (videoError)
@@ -356,7 +367,14 @@ const QuizContent = () => {
         </div>
       </div>
       {getCurrentQuestionUI()}
-      {getResults()}
+
+      <div className="flex justify-center items-center mt-4">
+        <button
+          className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600"
+          onClick={() => router.push("/dashboard")}>
+          לדף הבקרה
+        </button>
+      </div>
     </div>
   );
 };

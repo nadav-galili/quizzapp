@@ -15,12 +15,21 @@ export default function Home() {
         <h1 className="text-4xl font-bold text-gray-800">
           ברוך הבא למערכת הסרטונים
         </h1>
-
-        <Link
-          href="/login"
-          className="inline-block bg-blue-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-blue-700 transition-colors duration-300 shadow-lg">
-          כניסה למערכת
-        </Link>
+        <p className="text-lg text-gray-600">
+          המערכת מספקת סרטונים מסכמים ומסכמים של כל הסרטונים שלך
+        </p>
+        <div className="flex flex-col gap-4">
+          <Link
+            href="/login"
+            className="inline-block bg-blue-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-blue-700 transition-colors duration-300 shadow-lg">
+            כניסה למערכת
+          </Link>
+          <Link
+            href="/dashboard"
+            className="inline-block bg-blue-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-blue-700 transition-colors duration-300 shadow-lg">
+            לדף הבקרה
+          </Link>
+        </div>
       </div>
     </div>
   );
