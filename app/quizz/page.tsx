@@ -132,6 +132,9 @@ const QuizPage = () => {
   // Update existing questions reference
   const questions: Question[] = useMemo(() => questionsData, [questionsData]);
 
+  // Add player ref
+  const playerRef = React.useRef<ReactPlayer>(null);
+
   const handleProgress = (progress: { playedSeconds: number }) => {
     const currentTime = progress.playedSeconds;
     if (currentQuestionIndex === -1) {
@@ -153,21 +156,18 @@ const QuizPage = () => {
     const isCorrect = answer === currentQuestion.answer;
 
     if (!isCorrect) {
-      // Get current attempts for this question
       const questionAttempts = attempts[currentQuestionIndex] || 0;
 
       if (questionAttempts === 0) {
-        // First wrong attempt
         setAttempts((prev) => ({
           ...prev,
           [currentQuestionIndex]: 1,
         }));
-        alert("Wrong answer! Try again.");
-        return; // Don't proceed, let them try again
+        return;
       } else {
-        // Second wrong attempt - immediately restart
         alert("Starting over!");
-        // Reset everything and return early
+        // Reset video position to start
+        playerRef.current?.seekTo(0);
         setCurrentQuestionIndex(-1);
         setUserAnswers([]);
         setAttempts({});
@@ -177,7 +177,6 @@ const QuizPage = () => {
       }
     }
 
-    // Correct answer - clear attempts for this question
     setUserAnswers((prev) => [...prev, answer]);
     setCurrentQuestionIndex(-1);
     setPlaying(true);
@@ -276,6 +275,7 @@ const QuizPage = () => {
         {/* This makes the frame 50% width and centered */}
         <div className="relative aspect-video rounded-lg overflow-hidden">
           <ReactPlayer
+            ref={playerRef}
             url={videoUrl}
             playing={playing}
             controls={false}
