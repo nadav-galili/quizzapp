@@ -41,19 +41,30 @@ export default function Dashboard() {
           .select("*")
           .in("employee_id", attempts?.map((a) => a.employee_id) || []);
 
+        // Get restart counts
+        const { data: restarts, error: restartsError } = await supabase
+          .from("video_restarts")
+          .select("*")
+          .in("employee_id", attempts?.map((a) => a.employee_id) || []);
+
         console.log("Query result:", {
           attempts,
           responses,
+          restarts,
           attemptsError,
           responsesError,
+          restartsError,
         });
 
-        if (attemptsError || responsesError) {
-          console.error("Supabase error:", attemptsError || responsesError);
-          throw attemptsError || responsesError;
+        if (attemptsError || responsesError || restartsError) {
+          console.error(
+            "Supabase error:",
+            attemptsError || responsesError || restartsError
+          );
+          throw attemptsError || responsesError || restartsError;
         }
 
-        if (!attempts || !responses) {
+        if (!attempts || !responses || !restarts) {
           console.log("No data found");
           setStats([]);
           return;
@@ -73,16 +84,26 @@ export default function Dashboard() {
                     r.video_id === curr.video_id
                 ) || [];
 
+              // Get restart counts for this employee and video
+              const employeeRestarts =
+                restarts?.filter(
+                  (r) =>
+                    r.employee_id === curr.employee_id &&
+                    r.video_id === curr.video_id
+                ) || [];
+
               acc[key] = {
                 employee_id: curr.employee_id,
                 full_name: curr.employees?.full_name || "Unknown",
                 video_id: curr.video_id,
-                total_questions: employeeResponses.length,
+                total_questions: [
+                  ...new Set(employeeResponses.map((r) => r.question_id)),
+                ].length,
                 correct_answers: employeeResponses.filter((r) => r.is_correct)
                   .length,
                 wrong_answers: employeeResponses.filter((r) => !r.is_correct)
                   .length,
-                restart_count: 0,
+                restart_count: employeeRestarts.length,
                 started_at: curr.started_at,
                 completed_at: curr.completed_at,
                 has_completed: curr.is_completed || false,
@@ -123,10 +144,10 @@ export default function Dashboard() {
                 </h2>
                 <div className="space-y-2 text-right">
                   <p className="text-green-600">
-                    שאלות נכונות: {stat.correct_answers}
+                    תשובות נכונות: {stat.correct_answers}
                   </p>
                   <p className="text-red-600">
-                    שאלות שגויות: {stat.wrong_answers}
+                    תשובות שגויות: {stat.wrong_answers}
                   </p>
                   <p>סה״כ שאלות: {stat.total_questions}</p>
                   <p>התחלות מחדש: {stat.restart_count}</p>
