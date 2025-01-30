@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/app/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 
 interface EmployeeStats {
   employee_id: string;
@@ -20,10 +22,28 @@ interface EmployeeStats {
 export default function Dashboard() {
   const [stats, setStats] = useState<EmployeeStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [videoStats, setVideoStats] = useState<
+    Record<
+      string,
+      {
+        totalViews: number;
+        passed: number;
+        failed: number;
+        incomplete: number;
+        title?: string;
+      }
+    >
+  >({});
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
+        // Add videos query
+        const { data: videos, error: videosError } = await supabase
+          .from("videos")
+          .select("id, title");
+
         // First get test attempts
         const { data: attempts, error: attemptsError } = await supabase
           .from("test_attempts")
@@ -47,21 +67,12 @@ export default function Dashboard() {
           .select("*")
           .in("employee_id", attempts?.map((a) => a.employee_id) || []);
 
-        console.log("Query result:", {
-          attempts,
-          responses,
-          restarts,
-          attemptsError,
-          responsesError,
-          restartsError,
-        });
-
-        if (attemptsError || responsesError || restartsError) {
+        if (attemptsError || responsesError || restartsError || videosError) {
           console.error(
             "Supabase error:",
-            attemptsError || responsesError || restartsError
+            attemptsError || responsesError || restartsError || videosError
           );
-          throw attemptsError || responsesError || restartsError;
+          throw attemptsError || responsesError || restartsError || videosError;
         }
 
         if (!attempts || !responses || !restarts) {
@@ -116,6 +127,65 @@ export default function Dashboard() {
         );
 
         setStats(Object.values(stats));
+
+        // Calculate enhanced video stats
+        const videoTitles = videos?.reduce((acc: Record<string, string>, v) => {
+          acc[v.id] = v.title;
+          return acc;
+        }, {});
+
+        const videoStats = attempts?.reduce(
+          (
+            acc: Record<
+              string,
+              {
+                totalViews: number;
+                passed: number;
+                failed: number;
+                incomplete: number;
+                title?: string;
+              }
+            >,
+            curr
+          ) => {
+            if (!acc[curr.video_id]) {
+              acc[curr.video_id] = {
+                totalViews: 0,
+                passed: 0,
+                failed: 0,
+                incomplete: 0,
+                title: videoTitles?.[curr.video_id] || "Unknown",
+              };
+            }
+
+            acc[curr.video_id].totalViews++;
+
+            // Get responses for this attempt
+            const attemptResponses =
+              responses?.filter(
+                (r) =>
+                  r.employee_id === curr.employee_id &&
+                  r.video_id === curr.video_id
+              ) || [];
+
+            const correctAnswers = attemptResponses.filter(
+              (r) => r.is_correct
+            ).length;
+
+            if (!curr.is_completed) {
+              acc[curr.video_id].incomplete++;
+            } else if (correctAnswers >= 2) {
+              acc[curr.video_id].passed++;
+            } else {
+              acc[curr.video_id].failed++;
+            }
+
+            return acc;
+          },
+          {}
+        );
+
+        setVideoStats(videoStats || {});
       } catch (error) {
         console.error("Error in fetchStats:", error);
         setStats([]);
@@ -132,6 +202,31 @@ export default function Dashboard() {
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4 text-right">סטטיסטיקות מבחנים</h1>
+
+      {/* Video Stats Summary */}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <h2 className="font-bold text-3xl mb-2 text-right">
+            סיכום צפיות בסרטונים
+          </h2>
+          <div className="space-y-2 text-right">
+            {Object.entries(videoStats).map(([videoId, stats]) => (
+              <div key={videoId} className="border-b pb-2">
+                <p className="font-semibold text-2xl text-blue-500">
+                  {stats.title || `סרטון ${videoId}`}
+                </p>
+                <p>סה״כ צפיות: {stats.totalViews}</p>
+                <p className="text-green-600">עברו בהצלחה: {stats.passed}</p>
+                <p className="text-red-600">נכשלו: {stats.failed}</p>
+                <p className="text-yellow-600">
+                  טרם השלימו: {stats.incomplete}
+                </p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {stats.length === 0 ? (
         <div className="text-center p-4">אין נתונים זמינים</div>
       ) : (
@@ -170,6 +265,15 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* add a button to go back to the home page  */}
+      <div className="flex justify-center mt-4">
+        <Button
+          onClick={() => router.push("/")}
+          className="mt-4 bg-blue-500 text-white">
+          חזרה לדף הבית
+        </Button>
+      </div>
     </div>
   );
 }
