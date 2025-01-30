@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/app/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { Goal } from "./components/goal";
+import { Users, CheckCircle2, XCircle, Clock, Eye } from "lucide-react";
 
 interface EmployeeStats {
   employee_id: string;
@@ -201,8 +203,6 @@ export default function Dashboard() {
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4 text-right">סטטיסטיקות מבחנים</h1>
-
       {/* Video Stats Summary */}
       <Card className="mb-6">
         <CardContent className="p-4">
@@ -211,16 +211,38 @@ export default function Dashboard() {
           </h2>
           <div className="space-y-2 text-right">
             {Object.entries(videoStats).map(([videoId, stats]) => (
-              <div key={videoId} className="border-b pb-2">
-                <p className="font-semibold text-2xl text-blue-500">
-                  {stats.title || `סרטון ${videoId}`}
+              <div key={videoId} className="border-b pb-4">
+                <p className="font-semibold text-2xl text-blue-500 flex items-center justify-end gap-2">
+                  <span>{stats.title || `סרטון ${videoId}`}</span>
+                  <Users className="h-6 w-6" />
                 </p>
-                <p>סה״כ צפיות: {stats.totalViews}</p>
-                <p className="text-green-600">עברו בהצלחה: {stats.passed}</p>
-                <p className="text-red-600">נכשלו: {stats.failed}</p>
-                <p className="text-yellow-600">
-                  טרם השלימו: {stats.incomplete}
-                </p>
+                <div className="flex flex-col md:flex-row gap-6 mt-4">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-end gap-2 bg-gray-50 p-2 rounded-lg">
+                      <p>סה״כ צפיות: {stats.totalViews}</p>
+                      <Eye className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 bg-green-50 p-2 rounded-lg">
+                      <p className="text-green-600">
+                        עברו בהצלחה: {stats.passed}
+                      </p>
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 bg-red-50 p-2 rounded-lg">
+                      <p className="text-red-600">נכשלו: {stats.failed}</p>
+                      <XCircle className="h-5 w-5 text-red-600" />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 bg-yellow-50 p-2 rounded-lg">
+                      <p className="text-yellow-600">
+                        טרם השלימו: {stats.incomplete}
+                      </p>
+                      <Clock className="h-5 w-5 text-yellow-600" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <Goal stats={stats} />
+                  </div>
+                </div>
               </div>
             ))}
           </div>
